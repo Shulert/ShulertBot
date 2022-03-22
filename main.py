@@ -13,6 +13,10 @@ bot = discord.Bot()
 
 guild_id = os.getenv("GUILD_ID")
 
+red_types = ["red", "alert", "warning"]
+green_types = ["green", "update"]
+blue_types = ["blue", "general", "holiday"]
+
 ESCAPE_SEQUENCE_RE = re.compile(r'''
     ( \\U........      # 8-digit hex escapes
     | \\u....          # 4-digit hex escapes
@@ -37,21 +41,21 @@ async def on_ready():
 
 
 @bot.slash_command(
-    name="add_banner",
-    description="Add a banner to the Shulert app",
+    name="add_banner_v2",
+    description="Add a banner to the Shulert app V2",
     guild_ids=[guild_id]
 )
-async def add_banner(ctx,
-                     id: Option(str, "Banner ID (unique)", required=True),
-                     type: Option(str, "Banner type",
-                                  choices=["red", "alert", "warning", "green", "update", "blue", "general", "holiday"],
-                                  required=True),
-                     persistent: Option(bool, "Banner persistence", required=True),
-                     header: Option(str, "Banner header", required=True),
-                     content: Option(str, "Banner content", required=True)
-                     ):
-    file_name = "banners.json"
-
+async def add_banner_v2(ctx,
+                        id: Option(str, "Banner ID (unique)", required=True),
+                        type: Option(str, "Banner type",
+                                     choices=
+                                     ["red", "alert", "warning", "green", "update", "blue", "general", "holiday"],
+                                     required=True),
+                        persistent: Option(bool, "Banner persistence", required=True),
+                        header: Option(str, "Banner header", required=True),
+                        content: Option(str, "Banner content", required=True),
+                        enabled: Option(bool, "Banner ", default=True)
+                        ):
     header = decode_escapes(header)
     content = decode_escapes(content)
 
@@ -63,6 +67,65 @@ async def add_banner(ctx,
         "content": content
     }
 
+    if not enabled:
+        json_text["enabled"] = enabled
+
+    file_name = os.getenv("V2_FILE")
+    add_banner_json(json_text, file_name)
+
+    color = discord_color(type)
+    embed = discord.Embed(title=header, description=content, color=color) \
+        .set_author(name=id).set_footer(text="Persistent: %s, Enabled: %s" % (persistent, enabled))
+
+    await ctx.respond(embed=embed)
+
+
+@bot.slash_command(
+    name="add_banner_v1",
+    description="Add a banner to the Shulert app V1",
+    guild_ids=[guild_id]
+)
+async def add_banner_v2(ctx,
+                        content: Option(str, "Banner content", required=True),
+                        type: Option(str, "Banner type",
+                                     choices=
+                                     ["red", "alert", "warning", "green", "update", "blue", "general", "holiday"],
+                                     required=True),
+                        enabled: Option(bool, "Banner ", default=True)
+                        ):
+    content = decode_escapes(content)
+
+    color = "#003171"
+    if type in red_types:
+        color = "#E53E3E"
+    elif type in green_types:
+        color = "#48BB78"
+    elif type in blue_types:
+        color = "#5384D6"
+
+    json_text = {
+        "title": content,
+        "style": {
+            "color": color,
+            "fontWeight": "bold",
+            "textAlign": "center",
+            "fontSize": 16
+        }
+    }
+
+    if not enabled:
+        json_text["enabled"] = enabled
+
+    file_name = os.getenv("V1_FILE")
+    add_banner_json(json_text, file_name)
+
+    embed_color = discord_color(type)
+    embed = discord.Embed(description=content, color=embed_color).set_footer(text="Enabled: %s" % enabled)
+
+    await ctx.respond(embed=embed)
+
+
+def add_banner_json(json_text, file_name):
     if os.path.isfile(file_name):
         with open(file_name, "r", encoding="utf-8") as fp:
             data = json.load(fp)
@@ -79,11 +142,9 @@ async def add_banner(ctx,
     with open(file_name, "w+", encoding="utf-8") as fp:
         json.dump(data, fp, indent=4)
 
-    color = discord.Color.default()
 
-    red_types = ["red", "alert", "warning"]
-    green_types = ["green", "update"]
-    blue_types = ["blue", "general", "holiday"]
+def discord_color(type) -> discord.Color:
+    color = discord.Color.default()
 
     if type in red_types:
         color = discord.Color.from_rgb(229, 62, 62)
@@ -92,10 +153,7 @@ async def add_banner(ctx,
     elif type in blue_types:
         color = discord.Color.from_rgb(83, 132, 214)
 
-    embed = discord.Embed(title=header, description=content, color=color)\
-        .set_author(name=id).set_footer(text="Persistent: %s" % persistent)
-
-    await ctx.respond(embed=embed)
+    return color
 
 
 bot.run(os.getenv("TOKEN"))
