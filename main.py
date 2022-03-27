@@ -1,11 +1,18 @@
+import asyncio
 import codecs
 import json
 import os
 import re
 
 import discord
+import requests
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from discord import Option
 from dotenv import load_dotenv
+from pytz import utc
+from dateutil.relativedelta import relativedelta
+
+from datetime import date
 
 load_dotenv()
 
@@ -25,6 +32,10 @@ ESCAPE_SEQUENCE_RE = re.compile(r'''
     | \\N\{[^}]+\}     # Unicode characters by name
     | \\[\\'"abfnrtv]  # Single-character escapes
     )''', re.UNICODE | re.VERBOSE)
+
+hebcal_api = "https://www.hebcal.com/hebcal?v=1&cfg=json&maj=on&lg=a"
+
+holiday_banners_list = []
 
 
 def decode_escapes(s):
@@ -170,7 +181,6 @@ class Modify(discord.ui.View):
         super().__init__()
         self.version = version
         self.banner = banner
-        self.banners = get_banners(version)
         self.view_banners_message = view_banners_message
 
     @discord.ui.button(label="Delete", style=discord.ButtonStyle.danger)
@@ -180,15 +190,7 @@ class Modify(discord.ui.View):
         await interaction.message.reply(embed=discord.Embed(title="Deleted `%s`" % self.banner["id"]))
         await interaction.message.delete()
 
-        self.banners[1].remove(self.banner)
-
-        if self.version == "V2":
-            file_name = os.getenv("V2_FILE")
-        else:
-            file_name = os.getenv("V1_FILE")
-
-        with open(file_name, "w+", encoding="utf-8") as fp:
-            json.dump(self.banners[0], fp, indent=4)
+        delete_banner(self.version, self.banner)
 
         response = view_banners_embed(self.version)
         await self.view_banners_message.edit(content=response[0], view=response[1])
@@ -238,6 +240,80 @@ async def view_banners(ctx,
     await ctx.respond(response[0], view=response[1])
 
 
+def holiday_banners():
+    holidays = {
+        "rosh hashana": {
+            "header": "Happy Rosh Hashanah!",
+            "content": "Wishing you a happy, healthy and sweet New Year!"
+        },
+        "sukkos": {
+            "header": "Happy Succos!",
+            "content": "Wishing you a happy and healthy Succos!"
+        },
+        "chanukah": {
+            "header": "Happy Chanukah!",
+            "content": "Wishing you a happy and healthy Chanukah!"
+        },
+        "tu bishvat": {
+            "header": "Happy Tu B'Shvat!",
+            "content": "Wishing you a happy and healthy Tu B'Shvat!"
+        },
+        "purim": {
+            "header": "Happy Purim!",
+            "content": "Wishing you a happy and healthy Purim!"
+        },
+        "pesach": {
+            "header": "Happy Pesach!",
+            "content": "Wishing you a happy and healthy Purim!"
+        },
+        "lag baomer": {
+            "header": "Happy Lag B'Omer!",
+            "content": "Wishing you a happy and healthy Lag B'Omer!"
+        },
+        "shavuos": {
+            "header": "Happy Shavuos!",
+            "content": "Wishing you a happy and healthy Shavuos!"
+        }
+    }
+
+    today = date.today()
+    req = requests.get(hebcal_api + f"&start={today}&end={today + relativedelta(days=3)}")
+    res = req.json()
+
+    if len(res["items"]) >= 1:
+        item = res["items"][0]
+        title = item["title"].lower()
+
+        holiday = holidays.get(title, None)
+        if holiday is not None:
+            header = decode_escapes(holiday["header"])
+            content = decode_escapes(holiday["content"])
+            underscore_title = title.replace(" ", "_")
+            id = f"{underscore_title}_{today.year}"
+
+            json_text = {
+                "id": id,
+                "type": "holiday",
+                "persistent": True,
+                "header": header,
+                "content": content
+            }
+
+            if id not in holiday_banners_list:
+                json_text = add_edit_banner_json(json_text, "V2")
+                print(json_text)
+                holiday_banners_list.append(title)
+
+    for holiday_banner in holiday_banners_list:
+        if holiday_banner not in res["items"]:
+            underscore_title = holiday_banner.replace(" ", "_")
+            id = f"{underscore_title}_{today.year}"
+
+            for banner in get_banners("V2")[1]:
+                if banner["id"] == id:
+                    delete_banner("V2", banner)
+
+
 def view_banners_embed(version):
     banners = get_banners(version)[1]
     if len(banners) >= 1:
@@ -271,6 +347,19 @@ def get_banners(version):
         }
 
     return data, data["banners"]
+
+
+def delete_banner(version, banner):
+    banners = get_banners(version)
+    banners[1].remove(banner)
+
+    if version == "V2":
+        file_name = os.getenv("V2_FILE")
+    else:
+        file_name = os.getenv("V1_FILE")
+
+    with open(file_name, "w+", encoding="utf-8") as fp:
+        json.dump(banners[0], fp, indent=4)
 
 
 def add_edit_banner_json(json_text, version, old_id=None):
@@ -334,4 +423,14 @@ def discord_embed(id, color, content, enabled, header="", persistent=True):
     return embed
 
 
-bot.run(os.getenv("TOKEN"))
+if __name__ == "__main__":
+    scheduler = AsyncIOScheduler()
+    scheduler.configure(timezone=utc)
+    scheduler.add_job(holiday_banners, 'cron', hour=0)
+    scheduler.start()
+
+    try:
+        bot.run(os.getenv("TOKEN"))
+        asyncio.get_event_loop().run_forever()
+    except (KeyboardInterrupt, SystemExit):
+        pass
