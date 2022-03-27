@@ -10,7 +10,6 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from discord import Option
 from dotenv import load_dotenv
 from pytz import utc
-from dateutil.relativedelta import relativedelta
 
 from datetime import date
 
@@ -277,7 +276,7 @@ def holiday_banners():
     }
 
     today = date.today()
-    req = requests.get(hebcal_api + f"&start={today}&end={today + relativedelta(days=3)}")
+    req = requests.get(hebcal_api + f"&start={today}&end={today}")
     res = req.json()
 
     if len(res["items"]) >= 1:
