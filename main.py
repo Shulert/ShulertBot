@@ -170,7 +170,7 @@ async def add_banner_v1(ctx,
 
     json_text = add_edit_banner_json(json_text, "V1")
 
-    embed = discord_embed(id=json_text["id"], color=json_text["type"], content=json_text["content"],
+    embed = discord_embed(id=json_text["id"], color=json_text["style"]["color"], content=json_text["content"],
                           enabled=json_text.get("enabled", True))
     await ctx.respond(embed=embed)
 
