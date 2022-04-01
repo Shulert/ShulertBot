@@ -263,7 +263,7 @@ def holiday_banners():
         },
         "pesach": {
             "header": "Happy Pesach!",
-            "content": "Wishing you a happy and healthy Purim!"
+            "content": "Wishing you a happy and healthy Pesach!"
         },
         "lag baomer": {
             "header": "Happy Lag B'Omer!",
@@ -283,7 +283,11 @@ def holiday_banners():
         item = res["items"][0]
         title = item["title"].lower()
 
-        holiday = holidays.get(title, None)
+        holiday = None
+        for key in holidays.keys():
+            if key in title:
+                holiday = holidays[key]
+
         if holiday is not None:
             header = decode_escapes(holiday["header"])
             content = decode_escapes(holiday["content"])
