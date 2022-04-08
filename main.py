@@ -23,6 +23,10 @@ red_types = ["red", "alert", "warning"]
 green_types = ["green", "update"]
 blue_types = ["blue", "general", "holiday"]
 
+red = "#E53E3E"
+green = "#48BB78"
+blue = "#5384D6"
+
 ESCAPE_SEQUENCE_RE = re.compile(r'''
     ( \\U........      # 8-digit hex escapes
     | \\u....          # 4-digit hex escapes
@@ -131,6 +135,52 @@ async def edit_banner_v2(ctx,
 
 
 @bot.slash_command(
+    name="edit_banner_v1",
+    description="Edit a banner in the Shulert app V1",
+    guild_ids=[guild_id]
+)
+async def edit_banner_v1(ctx,
+                         old_id: Option(str, "Old Banner ID (unique)", required=True),
+                         id: Option(str, "Banner ID (unique)", required=False),
+                         type: Option(str, "Banner type",
+                                      choices=
+                                      ["red", "alert", "warning", "green", "update", "blue", "general", "holiday"],
+                                      required=False),
+                         content: Option(str, "Banner content", required=False),
+                         enabled: Option(bool, "Banner enabled state", default=True)
+                         ):
+    content = decode_escapes(content)
+
+    color = blue
+    if type in red_types:
+        color = red
+    elif type in green_types:
+        color = green
+    elif type in blue_types:
+        color = blue
+
+    json_text = {
+        "id": id,
+        "title": content,
+        "style": {
+            "color": color,
+            "fontWeight": "bold",
+            "textAlign": "center",
+            "fontSize": 16
+        }
+    }
+
+    if not enabled:
+        json_text["enabled"] = enabled
+
+    json_text = add_edit_banner_json(json_text, "V1", old_id)
+
+    embed = discord_embed(id=json_text["id"], color=json_text["style"]["color"], content=json_text["title"],
+                          enabled=json_text.get("enabled", True), version="V1")
+    await ctx.respond(embed=embed)
+
+
+@bot.slash_command(
     name="add_banner_v1",
     description="Add a banner to the Shulert app V1",
     guild_ids=[guild_id]
@@ -146,13 +196,13 @@ async def add_banner_v1(ctx,
                         ):
     content = decode_escapes(content)
 
-    color = "#003171"
+    color = blue
     if type in red_types:
-        color = "#E53E3E"
+        color = red
     elif type in green_types:
-        color = "#48BB78"
+        color = green
     elif type in blue_types:
-        color = "#5384D6"
+        color = blue
 
     json_text = {
         "id": id,
@@ -171,7 +221,7 @@ async def add_banner_v1(ctx,
     json_text = add_edit_banner_json(json_text, "V1")
 
     embed = discord_embed(id=json_text["id"], color=json_text["style"]["color"], content=json_text["content"],
-                          enabled=json_text.get("enabled", True))
+                          enabled=json_text.get("enabled", True), version="V1")
     await ctx.respond(embed=embed)
 
 
@@ -378,17 +428,24 @@ def add_edit_banner_json(json_text, version, old_id=None):
         if json_text["id"] is None:
             json_text["id"] = banner_old["id"]
 
-        if json_text["type"] is None:
-            json_text["type"] = banner_old["type"]
+        if version == "V2":
+            if json_text["type"] is None:
+                json_text["type"] = banner_old["type"]
 
-        if json_text["persistent"] is None:
-            json_text["persistent"] = banner_old["persistent"]
+            if json_text["persistent"] is None:
+                json_text["persistent"] = banner_old["persistent"]
 
-        if json_text["header"] is None:
-            json_text["header"] = banner_old["header"]
+            if json_text["header"] is None:
+                json_text["header"] = banner_old["header"]
 
-        if json_text["content"] is None:
-            json_text["content"] = banner_old["content"]
+            if json_text["content"] is None:
+                json_text["content"] = banner_old["content"]
+        else:
+            if json_text["title"] is None:
+                json_text["title"] = banner_old["title"]
+
+            if json_text["style"]["color"] is None:
+                json_text["style"]["color"] = banner_old["style"]["color"]
 
         banners[1][banner_index] = json_text
     else:
@@ -405,22 +462,21 @@ def add_edit_banner_json(json_text, version, old_id=None):
     return json_text
 
 
-def discord_color(type) -> discord.Color:
+def discord_color(type, version) -> discord.Color:
     color = discord.Color.default()
 
-    if type in red_types:
+    if type in red_types or type == red:
         color = discord.Color.from_rgb(229, 62, 62)
-    elif type in green_types:
+    elif type in green_types or type == green:
         color = discord.Color.from_rgb(72, 187, 120)
-    elif type in blue_types:
+    elif type in blue_types or type == blue:
         color = discord.Color.from_rgb(83, 132, 214)
 
     return color
 
 
-def discord_embed(id, color, content, enabled, header="", persistent=True):
-    if type(color) != discord.Color:
-        color = discord_color(color)
+def discord_embed(id, color, content, enabled, header="", persistent=True, version = "V2"):
+    color = discord_color(color, version)
     embed = discord.Embed(title=header, description=content, color=color) \
         .set_author(name=id).set_footer(text="Persistent: %s, Enabled: %s" % (persistent, enabled))
     return embed
