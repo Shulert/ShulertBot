@@ -142,11 +142,11 @@ async def edit_banner_v2(ctx,
 async def edit_banner_v1(ctx,
                          old_id: Option(str, "Old Banner ID (unique)", required=True),
                          id: Option(str, "Banner ID (unique)", required=False),
+                         content: Option(str, "Banner content", required=False),
                          type: Option(str, "Banner type",
                                       choices=
                                       ["red", "alert", "warning", "green", "update", "blue", "general", "holiday"],
                                       required=False),
-                         content: Option(str, "Banner content", required=False),
                          enabled: Option(bool, "Banner enabled state", default=True)
                          ):
     content = decode_escapes(content)
@@ -220,7 +220,7 @@ async def add_banner_v1(ctx,
 
     json_text = add_edit_banner_json(json_text, "V1")
 
-    embed = discord_embed(id=json_text["id"], color=json_text["style"]["color"], content=json_text["content"],
+    embed = discord_embed(id=json_text["id"], color=json_text["style"]["color"], content=json_text["title"],
                           enabled=json_text.get("enabled", True), version="V1")
     await ctx.respond(embed=embed)
 
