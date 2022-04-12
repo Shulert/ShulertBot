@@ -13,11 +13,16 @@ from pytz import utc
 
 from datetime import date
 
+from quart import Quart
+from quart import request
+
 load_dotenv()
 
+app = Quart(__name__)
 bot = discord.Bot()
 
 guild_id = os.getenv("GUILD_ID")
+channel_id = os.getenv("CHANNEL_ID")
 
 red_types = ["red", "alert", "warning"]
 green_types = ["green", "update"]
@@ -39,6 +44,18 @@ ESCAPE_SEQUENCE_RE = re.compile(r'''
 hebcal_api = "https://www.hebcal.com/hebcal?v=1&cfg=json&maj=on&lg=a"
 
 holiday_banners_list = []
+
+class Shul:
+    def __init__(self, name, rabbi, nusach, affiliation, email, phone, website, address):
+        super().__init__()
+        self.name = name
+        self.rabbi = rabbi
+        self.nusach = nusach
+        self.affiliation = affiliation
+        self.email = email
+        self.phone = phone
+        self.website = website
+        self.address = address
 
 
 def decode_escapes(s):
@@ -274,6 +291,24 @@ class BannerButton(discord.ui.Button):
         await interaction.response.send_message(embed=embed, view=view)
 
 
+class ShulView(discord.ui.View):
+    def __init__(self, shul):
+        super().__init__()
+        self.shul = shul
+
+    @discord.ui.button(label="Approve", style=discord.ButtonStyle.green)
+    async def approve(self, button: discord.ui.Button, interaction: discord.Interaction):
+        self.stop()
+
+        await interaction.message.reply(embed=discord.Embed(title="Approved `%s`" % self.shul.name))
+
+    @discord.ui.button(label="Deny", style=discord.ButtonStyle.danger)
+    async def deny(self, button: discord.ui.Button, interaction: discord.Interaction):
+        self.stop()
+
+        await interaction.message.reply(embed=discord.Embed(title="Denied `%s`" % self.shul.name))
+
+
 @bot.slash_command(
     name="view_banners",
     description="View the banners added to the Shulert app",
@@ -475,6 +510,34 @@ def discord_color(type, version) -> discord.Color:
     return color
 
 
+@app.route("/shul/add", methods=["POST"])
+async def add_shul_handle():
+    data = await request.get_json()
+    name = data.get('name')
+    rabbi = data.get('rabbi')
+    nusach = data.get('nusach')
+    affiliation = data.get('affiliation')
+    email = data.get('email')
+    phone = data.get('phone')
+    website = data.get('website')
+    address = data.get('address')
+
+    view = ShulView(Shul(name, rabbi, nusach, affiliation, email, phone, website, address))
+    embed = shul_discord_embed(name, nusach, affiliation, address, rabbi, email, phone, website)
+    await bot.get_channel(int(channel_id)).send(embed=embed, view=view)
+    return "Embed Sent Successfully"
+
+
+def shul_discord_embed(name, nusach, affiliation, address, rabbi, email, phone, website):
+    embed = discord.Embed(title=name, description=address) \
+        .add_field(name="Rabbi", value=rabbi, inline=False) \
+        .add_field(name="Email", value=email, inline=False) \
+        .add_field(name="Phone", value=phone, inline=False) \
+        .add_field(name="Website", value=website, inline=False) \
+        .set_footer(text="Nusach: %s, Affiliation: %s" % (nusach, affiliation))
+    return embed
+
+
 def discord_embed(id, color, content, enabled, header="", persistent=True, version = "V2"):
     color = discord_color(color, version)
     embed = discord.Embed(title=header, description=content, color=color) \
@@ -489,6 +552,7 @@ if __name__ == "__main__":
     scheduler.start()
 
     try:
+        bot.loop.create_task(app.run_task(port=int(os.getenv("PORT"))))
         bot.run(os.getenv("TOKEN"))
         asyncio.get_event_loop().run_forever()
     except (KeyboardInterrupt, SystemExit):
