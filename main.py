@@ -368,15 +368,18 @@ def holiday_banners():
         item = res["items"][0]
         title = item["title"].lower()
 
+        holiday_name = ""
+
         holiday = None
         for key in holidays.keys():
             if key in title:
                 holiday = holidays[key]
+                holiday_name = key
 
         if holiday is not None:
             header = decode_escapes(holiday["header"])
             content = decode_escapes(holiday["content"])
-            underscore_title = title.replace(" ", "_")
+            underscore_title = holiday_name.replace(" ", "_")
             id = f"{underscore_title}_{today.year}"
 
             json_text = {
