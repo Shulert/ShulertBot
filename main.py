@@ -388,12 +388,12 @@ def holiday_banners():
             }
 
             if id not in holiday_banners_list:
-                json_text = add_edit_banner_json(json_text, "V2")
-                print(json_text)
+                add_edit_banner_json(json_text, "V2")
                 holiday_banners_list.append(title)
 
     for holiday_banner in holiday_banners_list:
-        if holiday_banner not in res["items"]:
+        titles = [x["title"].lower() for x in res["items"]]
+        if holiday_banner not in titles:
             underscore_title = holiday_banner.replace(" ", "_")
             id = f"{underscore_title}_{today.year}"
 
