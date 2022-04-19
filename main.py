@@ -513,7 +513,7 @@ def discord_color(type, version) -> discord.Color:
     return color
 
 
-@app.route("/shul/add", methods=["POST"])
+@app.route("/shuls", methods=["POST"])
 async def add_shul_handle():
     data = await request.get_json()
     name = data.get('name')
