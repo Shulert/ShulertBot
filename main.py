@@ -3,6 +3,7 @@ import codecs
 import json
 import os
 import re
+import sys
 
 import discord
 import requests
@@ -11,7 +12,7 @@ from discord import Option
 from dotenv import load_dotenv
 from pytz import utc
 
-from datetime import date
+from datetime import date, timedelta
 
 from quart import Quart
 from quart import request
@@ -43,7 +44,6 @@ ESCAPE_SEQUENCE_RE = re.compile(r'''
 
 hebcal_api = "https://www.hebcal.com/hebcal?v=1&cfg=json&maj=on&lg=a"
 
-holiday_banners_list = []
 
 class Shul:
     def __init__(self, name, rabbi, nusach, affiliation, email, phone, website, address):
@@ -361,7 +361,7 @@ def holiday_banners():
     }
 
     today = date.today()
-    req = requests.get(hebcal_api + f"&start={today}&end={today}")
+    req = requests.get(hebcal_api + f"&start={today}&end={today + timedelta(days=3)}")
     res = req.json()
 
     if len(res["items"]) >= 1:
@@ -390,19 +390,23 @@ def holiday_banners():
                 "content": content
             }
 
-            if id not in holiday_banners_list:
+            banners = get_banners("V2")[1]
+            if id not in [banner["id"] for banner in banners]:
                 add_edit_banner_json(json_text, "V2")
-                holiday_banners_list.append(title)
 
-    for holiday_banner in holiday_banners_list:
-        titles = [x["title"].lower() for x in res["items"]]
-        if holiday_banner not in titles:
-            underscore_title = holiday_banner.replace(" ", "_")
-            id = f"{underscore_title}_{today.year}"
+    banners = get_banners("V2")[1]
+    for banner in banners:
+        ids = []
+        for x in res["items"]:
+            holiday_name = ""
+            for key in holidays.keys():
+                if key in x['title'].lower():
+                    holiday_name = key
 
-            for banner in get_banners("V2")[1]:
-                if banner["id"] == id:
-                    delete_banner("V2", banner)
+            ids.append(f"{holiday_name.replace(' ', '_')}_{today.year}")
+
+        if banner["id"] not in ids:
+            delete_banner("V2", banner)
 
 
 def view_banners_embed(version):
