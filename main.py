@@ -4,16 +4,15 @@ import json
 import os
 import re
 import sys
+from datetime import date, timedelta
 
+import aiohttp
 import discord
 import requests
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from discord import Option
 from dotenv import load_dotenv
 from pytz import utc
-
-from datetime import date, timedelta
-
 from quart import Quart
 from quart import request
 
@@ -43,10 +42,13 @@ ESCAPE_SEQUENCE_RE = re.compile(r'''
     )''', re.UNICODE | re.VERBOSE)
 
 hebcal_api = "https://www.hebcal.com/hebcal?v=1&cfg=json&maj=on&lg=a"
+shulert_add_api = "https://api.shulert.com/v2/_shul"
+shulert_shul = "https://www.shulert.com/shul/%s"
 
 
 class Shul:
-    def __init__(self, name, rabbi, nusach, affiliation, email, phone, website, address):
+    def __init__(self, name, rabbi, nusach, affiliation, email, phone, website, address, city, state, zipcode, latitude,
+                 longitude):
         super().__init__()
         self.name = name
         self.rabbi = rabbi
@@ -56,6 +58,11 @@ class Shul:
         self.phone = phone
         self.website = website
         self.address = address
+        self.city = city
+        self.state = state
+        self.zipcode = zipcode
+        self.latitude = latitude
+        self.longitude = longitude
 
 
 def decode_escapes(s):
@@ -300,12 +307,44 @@ class ShulView(discord.ui.View):
     async def approve(self, button: discord.ui.Button, interaction: discord.Interaction):
         self.stop()
 
-        await interaction.message.reply(embed=discord.Embed(title="Approved `%s`" % self.shul.name))
+        json_text = {
+            "shul": {
+                "name": self.shul.name,
+                "affiliation": self.shul.affiliation,
+                "nusach": self.shul.nusach,
+                "address": self.shul.address,
+                "city": self.shul.city,
+                "state": self.shul.state,
+                "zipcode": self.shul.zipcode,
+                "latitude": self.shul.latitude,
+                "longitude": self.shul.longitude,
+            }
+        }
+
+        if self.shul.rabbi:
+            json_text["shul"]["rabbi"] = self.shul.rabbi
+        if self.shul.phone:
+            json_text["shul"]["phone"] = self.shul.phone
+        if self.shul.email:
+            json_text["shul"]["email"] = self.shul.email
+        if self.shul.website:
+            json_text["shul"]["website"] = self.shul.website
+
+        async with aiohttp.ClientSession(headers={"Authorization": os.getenv("API_AUTH")}) as session:
+            async with session.post(shulert_add_api, json=json_text) as resp:
+                json = await resp.json()
+                if resp.status == 200:
+                    await interaction.message.reply(embed=discord.Embed(title="Approved `%s` - %s" %
+                                                                              (self.shul.name,
+                                                                               shulert_shul % json["result"]["id"])),
+                                                    ephemeral=True)
+                    await interaction.message.delete()
+                else:
+                    await interaction.message.reply(embed=discord.Embed(title="Error",
+                                                                        description=str(json) + "\n" + str(json_text)))
 
     @discord.ui.button(label="Deny", style=discord.ButtonStyle.danger)
     async def deny(self, button: discord.ui.Button, interaction: discord.Interaction):
-        self.stop()
-
         await interaction.message.reply(embed=discord.Embed(title="Denied `%s`" % self.shul.name))
 
 
@@ -528,24 +567,35 @@ async def add_shul_handle():
     phone = data.get('phone')
     website = data.get('website')
     address = data.get('address')
+    city = data.get('city')
+    state = data.get('state')
+    zipcode = data.get('zipcode')
+    latitude = data.get('latitude')
+    longitude = data.get('longitude')
 
-    view = ShulView(Shul(name, rabbi, nusach, affiliation, email, phone, website, address))
-    embed = shul_discord_embed(name, nusach, affiliation, address, rabbi, email, phone, website)
+    view = ShulView(
+        Shul(name, rabbi, nusach, affiliation, email, phone, website, address, city, state, zipcode, latitude,
+             longitude))
+    embed = shul_discord_embed(name, nusach, affiliation, address, city, state, zipcode, latitude, longitude, rabbi,
+                               email, phone, website)
     await bot.get_channel(int(channel_id)).send(embed=embed, view=view)
     return "Embed Sent Successfully"
 
 
-def shul_discord_embed(name, nusach, affiliation, address, rabbi, email, phone, website):
-    embed = discord.Embed(title=name, description=address) \
+def shul_discord_embed(name, nusach, affiliation, address, city, state, zipcode, latitude, longitude, rabbi, email,
+                       phone, website):
+    embed = discord.Embed(title=name, description="%s, %s, %s %s" % (address, city, state, zipcode)) \
         .add_field(name="Rabbi", value=rabbi, inline=False) \
+        .add_field(name="Nusach", value=nusach, inline=False) \
+        .add_field(name="Affiliation", value=affiliation, inline=False) \
         .add_field(name="Email", value=email, inline=False) \
         .add_field(name="Phone", value=phone, inline=False) \
         .add_field(name="Website", value=website, inline=False) \
-        .set_footer(text="Nusach: %s, Affiliation: %s" % (nusach, affiliation))
+        .set_footer(text="Latitude: %s, Longitude: %s" % (latitude, longitude))
     return embed
 
 
-def discord_embed(id, color, content, enabled, header="", persistent=True, version = "V2"):
+def discord_embed(id, color, content, enabled, header="", persistent=True, version="V2"):
     color = discord_color(color, version)
     embed = discord.Embed(title=header, description=content, color=color) \
         .set_author(name=id).set_footer(text="Persistent: %s, Enabled: %s" % (persistent, enabled))
