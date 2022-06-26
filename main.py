@@ -332,16 +332,22 @@ class ShulView(discord.ui.View):
 
         async with aiohttp.ClientSession(headers={"Authorization": os.getenv("API_AUTH")}) as session:
             async with session.post(shulert_add_api, json=json_text) as resp:
-                json = await resp.json()
+                json_resp = await resp.json()
                 if resp.status == 200:
                     await interaction.message.reply(embed=discord.Embed(title="Approved `%s` - %s" %
                                                                               (self.shul.name,
-                                                                               shulert_shul % json["result"]["id"])),
+                                                                               shulert_shul % json_resp["result"]["id"])),
                                                     ephemeral=True)
                     await interaction.message.delete()
                 else:
+                    json_code_block = """
+```json
+%s
+```"""
+
                     await interaction.message.reply(embed=discord.Embed(title="Error",
-                                                                        description=str(json) + "\n" + str(json_text)))
+                                                                        description=json_code_block % json.dumps(json_resp, indent=2) +
+                                                                                    json_code_block % json.dumps(json_text, indent=2)))
 
     @discord.ui.button(label="Deny", style=discord.ButtonStyle.danger)
     async def deny(self, button: discord.ui.Button, interaction: discord.Interaction):
